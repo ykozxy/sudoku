@@ -1,6 +1,5 @@
 package javaGame;
 
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Random;
 
@@ -21,7 +20,13 @@ public class Board {
   }
 
   public static void main(String[] args) {
-    System.out.println(Arrays.deepToString(new Board().board));
+    int[][] data = new int[9][9];
+    data[0][0] = 1;
+    data[0][1] = 1;
+    Board board = new Board(data);
+    System.out.println(board);
+    System.out.println(board.checkValidity(0, 0));
+    System.out.println(board.checkValidity(0, 2));
   }
 
   public void setBoard(int[][] board) {
@@ -191,13 +196,48 @@ public class Board {
   }
 
   public boolean checkValidity(int row, int column) {
-    return !findFitNum(row, column).isEmpty();
+    int num = this.board[row][column];
+    if (num == 0) {
+      return true;
+    }
+    int count;
+
+    count = 0;
+    for (int i : this.board[row]) {
+      if (num == i) {
+        count++;
+      }
+      if (count == 2) {
+        return false;
+      }
+    }
+
+    count = 0;
+    for (int i = 0; i < 9; i++) {
+      if (num == this.board[i][column]) {
+        count++;
+      }
+      if (count == 2) {
+        return false;
+      }
+    }
+
+    count = 0;
+    for (int i : get_block(row, column)) {
+      if (num == i) {
+        count++;
+      }
+      if (count == 2) {
+        return false;
+      }
+    }
+    return true;
   }
 
   public boolean checkValidityBoard() {
     for (int i = 0; i < 9; i++) {
       for (int j = 0; j < 9; j++) {
-        if (!findFitNum(i, j).isEmpty()) {
+        if (!checkValidity(i, j)) {
           return false;
         }
       }
@@ -208,8 +248,7 @@ public class Board {
   private HashSet<Integer> findFitNum(int row, int column) {
     HashSet<Integer> currentCases = new HashSet<>(cases);
 
-    for (int i :
-            this.board[row]) {
+    for (int i : this.board[row]) {
       currentCases.remove(i);
     }
 
@@ -217,8 +256,7 @@ public class Board {
       currentCases.remove(this.board[i][column]);
     }
 
-    for (int i :
-            get_block(row, column)) {
+    for (int i : get_block(row, column)) {
       currentCases.remove(i);
     }
 

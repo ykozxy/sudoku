@@ -30,7 +30,7 @@ def start_jvm(path: str = None):
             "JVM cannot be located.\n"
             "Please ensure you have installed java(>= 1.8) on your computer.\n"
             "If you have installed java, please choose location of java manually.",
-            cancel=False,
+            True
         ).run()
 
         if result:
@@ -38,6 +38,7 @@ def start_jvm(path: str = None):
                 "Notify",
                 "Please choose the directory where java is installed as specific as you can.\n"
                 "Program will search under the directory you provide.",
+                False
             ).run()
             root = easygui.diropenbox(
                 "Choose the directory where java is installed", "Locate JVM"
@@ -53,6 +54,7 @@ def start_jvm(path: str = None):
                 AlertWindow(
                     "Error",
                     "No JVM found, please make sure you choose the right directory.",
+                    False
                 )
                 exit(-1)
     jpype.startJVM(j_path, r"-Djava.class.path=sudoku.jar")
@@ -75,7 +77,7 @@ def main():
 
     # Start APP...
     app = App()
-    app.load_board(load_from_image("test/sudoku1.jpg").board)
+    # app.load_board(load_from_image("test/sudoku1.jpg").board)
     app.run()
 
 
@@ -137,24 +139,61 @@ class App(tk.Tk):
         # Record all operations, used for withdraw
         self.operation_list = []
 
+        # Store all warning blocks
+        self.warning_block_list = []
+
         # Draw board and pack canvas
-        self.canvas = tk.Canvas(self, width=450, height=450)
+        self.canvas = tk.Canvas(self, width=270, height=270)
         self.canvas.config(borderwidth=2)
         for hor in range(9):
             self.canvas.create_line(
-                (0, hor * 50, 450, hor * 50), width=2 if hor % 3 == 0 else 1
+                (0, hor * 30, 270, hor * 30), width=2 if hor % 3 == 0 else 1
             )
         for ver in range(9):
             self.canvas.create_line(
-                (ver * 50, 0, ver * 50, 450), width=2 if ver % 3 == 0 else 1
+                (ver * 30, 0, ver * 30, 270), width=2 if ver % 3 == 0 else 1
             )
         self.canvas.bind("<Button-1>", self.click_board)
-        self.canvas.pack(padx=10, pady=10)
+        self.canvas.grid(row=0, column=0, padx=10, pady=10)
+
+        # Add toolbox
+        self.toolbox = ttk.Frame(self)
+        self.control_frame = ttk.Labelframe(self.toolbox, text="Control board")
+        ttk.Button(self.control_frame, text="Check", command=self.check).pack(
+            padx=10, pady=3
+        )
+        ttk.Button(self.control_frame, text="Reset", command=self.reset).pack(
+            padx=10, pady=3
+        )
+        ttk.Button(self.control_frame, text="Solve", command=self.solve).pack(
+            padx=10, pady=3
+        )
+        self.control_frame.pack(pady=3)
+        self.load_frame = ttk.Labelframe(self.toolbox, text="Create & Load board")
+        ttk.Button(
+            self.load_frame,
+            text="Random Generate",
+            command=self.random_generate,
+            width=15,
+        ).pack(padx=10, pady=3)
+        ttk.Button(
+            self.load_frame,
+            text="Load from disk",
+            command=self.load_from_disk,
+            width=15,
+        ).pack(padx=10, pady=3)
+        ttk.Button(
+            self.load_frame,
+            text="Load from picture",
+            command=self.load_from_picture,
+            width=15,
+        ).pack(padx=10, pady=3)
+        self.load_frame.pack(pady=2)
+        self.toolbox.grid(row=0, column=1)
 
         # Bind global events
         self.bind("<Key>", self.chess_control)
         self.bind("<Control-z>", self.withdraw)
-        self.bind("<Control-s>")  # TODO
         self.bind("<BackSpace>", lambda e: self.clear_number(e, record=True))
         self.bind("<Delete>", lambda e: self.clear_number(e, record=True))
         self.bind("<Left>", self.move_select)
@@ -162,14 +201,91 @@ class App(tk.Tk):
         self.bind("<Up>", self.move_select)
         self.bind("<Down>", self.move_select)
 
+    def solve(self):
+        self.board.setBoard(self.original_state)
+        if not self.board.solvePuzzle():
+            AlertWindow("Error", "Cannot solve this board!", False).run()
+            return
+        for i in range(9):
+            for j in range(9):
+                if not self.original_state[i][j]:
+                    self.set_number((i, j), self.board.board[i][j], record=False)
+
+    def reset(self):
+        self.board.setBoard([[0 for x in range(9)] for y in range(9)])
+        self.show_board()
+
+    def check(self):
+        for _ in range(len(self.warning_block_list)):
+            self.canvas.delete(self.warning_block_list.pop()[0])
+
+        error_list = []
+        for i in range(9):
+            for j in range(9):
+                if not self.original_state[i][j]:
+                    if not self.board.checkValidity(i, j):
+                        error_list.append((i, j))
+        for block in error_list:
+            self.warning_block_list.append(
+                (
+                    self.canvas.create_rectangle(
+                        (
+                            block[0] * 30,
+                            block[1] * 30,
+                            (block[0] + 1) * 30,
+                            (block[1] + 1) * 30,
+                        ),
+                        outline="Purple",
+                        width=2,
+                    ),
+                    block,
+                )
+            )
+        if not error_list:
+            AlertWindow("Congratulation", "No problems found so far!", False).run()
+
+    def random_generate(self):
+        self.board.setBoard([[0 for x in range(9)] for y in range(9)])
+        self.board.randomGenerateBoard()
+        self.board.generatePuzzle(30, 60)
+        self.show_board()
+
+    def load_from_disk(self):
+        pass
+
+    def load_from_picture(self):
+        pass
+
     def load_board(self, board: List[List[int]]):
+        """
+        Load board from existing data
+        :param board: 9 * 9 2d array represent the board
+        :return: None
+        """
         assert len(board) == len(board[0]) == 9
         self.board.setBoard(board)
+        self.show_board()
+
+    def show_board(self):
+        # reset board
+        self.original_state = [[0 for x in range(9)] for y in range(9)]
+        self.operation_list = []
+        for i in self.canvas_num:
+            for j in i:
+                self.canvas.delete(j)
+        self.canvas_num = [[None for x in range(9)] for y in range(9)]
+
         for x in range(9):
             for y in range(9):
                 if self.board.board[x][y] != 0:
-                    self.set_number((x, y), self.board.board[x][y], final=True, record=False)
-                    self.original_state[x][y] = 1
+                    self.set_number(
+                        (x, y),
+                        self.board.board[x][y],
+                        font=tk.font.BOLD,
+                        color="black",
+                        record=False,
+                    )
+                    self.original_state[x][y] = self.board.board[x][y]
 
     def withdraw(self, e: tk.Event = None) -> None:
         """
@@ -220,10 +336,10 @@ class App(tk.Tk):
             self.last_select = (
                 self.canvas.create_rectangle(
                     (
-                        block[0] * 50,
-                        block[1] * 50,
-                        (block[0] + 1) * 50,
-                        (block[1] + 1) * 50,
+                        block[0] * 30,
+                        block[1] * 30,
+                        (block[0] + 1) * 30,
+                        (block[1] + 1) * 30,
                     ),
                     outline="blue"
                     if self.original_state[block[0]][block[1]] == 0
@@ -253,10 +369,18 @@ class App(tk.Tk):
                 if self.original_state[self.selected[0]][self.selected[1]] == 0:
                     self.set_number(self.selected, int(num))
 
-    def set_number(self, block: Tuple[int, int], number: int, final: bool = False, record: bool = True) -> None:
+    def set_number(
+            self,
+            block: Tuple[int, int],
+            number: int,
+            font=tk.font.NORMAL,
+            color: str = "green",
+            record: bool = True,
+    ) -> None:
         """
         Set the certain number on the board
-        :param final: if this is true, number show on the board will be BOLD
+        :param color: the color of the number
+        :param font: the font of number
         :param block: coordinate of the block
         :param number: number want to show
         :param record: will this operation be record in self.operation_list
@@ -266,12 +390,21 @@ class App(tk.Tk):
         self.board.board[block[0]][block[1]] = number
         if self.canvas_num[block[0]][block[1]]:
             self.canvas.delete(self.canvas_num[block[0]][block[1]])
+
         self.canvas_num[block[0]][block[1]] = self.canvas.create_text(
-            (block[0] * 50 + 25, block[1] * 50 + 25),
+            (block[0] * 30 + 15, block[1] * 30 + 15),
             text=str(number),
-            font=Font(size=20,
-                      weight=tk.font.BOLD if final else tk.font.NORMAL),
+            font=Font(size=15, weight=font),
+            fill=color,
         )
+
+        # Check if this is a warned block
+        for i in self.warning_block_list:
+            if i[1] == block:
+                self.canvas.delete(i[0])
+                self.warning_block_list.remove(i)
+                break
+
         if record:
             if not self.operation_list:
                 self.operation_list.append(("set", self.selected, number))
@@ -310,13 +443,17 @@ class App(tk.Tk):
                 num = self.board.board[self.selected[0]][self.selected[1]]
                 self.board.board[self.selected[0]][self.selected[1]] = 0
                 if self.canvas_num[self.selected[0]][self.selected[1]]:
-                    self.canvas.delete(self.canvas_num[self.selected[0]][self.selected[1]])
+                    self.canvas.delete(
+                        self.canvas_num[self.selected[0]][self.selected[1]]
+                    )
                     if record:
                         if not self.operation_list:
                             self.operation_list.append(("clear", self.selected, num))
                         else:
                             if ("clear", self.selected) != self.operation_list[-1]:
-                                self.operation_list.append(("clear", self.selected, num))
+                                self.operation_list.append(
+                                    ("clear", self.selected, num)
+                                )
 
     def move_select(self, e) -> None:
         """
@@ -370,7 +507,7 @@ class App(tk.Tk):
 
     @staticmethod
     def _get_block(x: int, y: int):
-        return x // 50, y // 50
+        return x // 30, y // 30
 
     def run(self):
         # Set mouse focus on main window so that app can receive key press signals
@@ -378,45 +515,45 @@ class App(tk.Tk):
         self.mainloop()
 
 
-class AlertWindow(ttk.Frame):
+class AlertWindow(tk.Toplevel):
     """
     This class show an alert window
     """
+
     result: bool
 
-    def __init__(self, title: str, msg: str, cancel: bool = True):
+    def __init__(self, title: str, msg: str, cancel_button: bool = True):
         super(AlertWindow, self).__init__()
 
         self.result = False
-        self.master.title(title)
-        ttk.Label(self.master, text=msg).pack(padx=10, pady=10)
+        self.title(title)
+        ttk.Label(self, text=msg).grid(row=0, column=0, padx=10, pady=10)
 
         self.buttonFrame = ttk.Frame(self)
         ttk.Button(self.buttonFrame, text="OK", command=self.ok).grid(
             row=0, column=0, padx=10
         )
-        if not cancel:
+        if cancel_button:
             ttk.Button(self.buttonFrame, text="Cancel", command=self.cancel).grid(
                 row=0, column=1, padx=10
             )
 
-        self.buttonFrame.pack()
-        self.pack()
+        self.buttonFrame.grid(row=1, column=0)
 
     def run(self) -> bool:
         """
         Run the window, return user choice
         :return: True for select "OK" and False for select "Cancel"
         """
-        self.master.mainloop()
+        self.mainloop()
         return self.result
 
     def ok(self):
         self.result = True
-        self.master.destroy()
+        self.destroy()
 
     def cancel(self):
-        self.master.destroy()
+        self.destroy()
 
 
 if __name__ == "__main__":
